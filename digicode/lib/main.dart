@@ -1,7 +1,22 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Քո Firebase տվյալները արդեն տեղադրված են
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: "AIzaSyBy4ykz7ypeB-PgsMPK018RgTM8cdLom0Y",
+      appId: "1:560580091378:web:0e30467c0bea7364ad1f6b",
+      messagingSenderId: "560580091378",
+      projectId: "parkingsystem-e129c",
+      databaseURL: "https://parkingsystem-e129c-default-rtdb.firebaseio.com",
+    ),
+  );
+
   runApp(ParkingApp());
 }
 
@@ -27,12 +42,14 @@ class _ParkingScreenState extends State<ParkingScreen> {
   List<bool> blinkVisible = [true, true, true];
 
   Timer? timer;
-  final List<int> durationOptions = [2, 5, 7]; // րոպեներ
+  final List<int> durationOptions = [2, 5, 7];
+
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("parking");
 
   @override
   void initState() {
     super.initState();
-    timer = Timer.periodic(Duration(seconds: 1), (_) {
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         checkTime();
       });
@@ -45,25 +62,32 @@ class _ParkingScreenState extends State<ParkingScreen> {
     super.dispose();
   }
 
-  void reserveSpot(int index, int minutes) {
+  void reserveSpot(int index, int minutes) async {
     setState(() {
       endTime[index] = DateTime.now().add(Duration(minutes: minutes));
       occupied[index] = true;
       selectedSpot = null;
       blinkVisible[index] = true;
     });
+
+    // Ուղարկում ենք 1 (կարմիր լույս) Firebase
+    await dbRef.child("spot${index + 1}").set(1);
   }
 
-  void checkTime() {
+  void checkTime() async {
     final now = DateTime.now();
     for (int i = 0; i < endTime.length; i++) {
       if (endTime[i] != null) {
         final diff = endTime[i]!.difference(now).inSeconds;
 
         if (diff <= 0) {
-          occupied[i] = false;
-          endTime[i] = null;
-          blinkVisible[i] = true;
+          setState(() {
+            occupied[i] = false;
+            endTime[i] = null;
+            blinkVisible[i] = true;
+          });
+          // Ուղարկում ենք 0 (կանաչ լույս) Firebase
+          await dbRef.child("spot${i + 1}").set(0);
         } else if (diff <= 10) {
           blinkVisible[i] = !blinkVisible[i];
         } else {
@@ -97,10 +121,14 @@ class _ParkingScreenState extends State<ParkingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Center(
+        title: const Center(
           child: Text(
             "Park Smart",
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
         ),
         backgroundColor: Colors.blue.shade700,
@@ -116,14 +144,13 @@ class _ParkingScreenState extends State<ParkingScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Available Spots Container
             Container(
-              margin: EdgeInsets.only(bottom: 30),
-              padding: EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 30),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
                     color: Colors.black26,
                     blurRadius: 6,
@@ -133,23 +160,22 @@ class _ParkingScreenState extends State<ParkingScreen> {
               ),
               child: Text(
                 "Available Spots: ${availableSpots()}",
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
                 ),
               ),
             ),
-            // Parking Spots Row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: List.generate(3, (index) {
                 return Container(
-                  padding: EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.8),
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
+                    boxShadow: const [
                       BoxShadow(
                         color: Colors.black26,
                         blurRadius: 4,
@@ -160,7 +186,7 @@ class _ParkingScreenState extends State<ParkingScreen> {
                   child: Column(
                     children: [
                       IconButton(
-                        iconSize: 120,
+                        iconSize: 100,
                         icon: Icon(
                           Icons.directions_car,
                           color: getSpotColor(index),
@@ -169,15 +195,16 @@ class _ParkingScreenState extends State<ParkingScreen> {
                             ? null
                             : () {
                                 setState(() {
-                                  selectedSpot =
-                                      selectedSpot == index ? null : index;
+                                  selectedSpot = selectedSpot == index
+                                      ? null
+                                      : index;
                                 });
                               },
                       ),
                       Text(
                         "Spot ${index + 1}\n${occupied[index] ? 'Occupied' : 'Free'}",
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
@@ -196,7 +223,7 @@ class _ParkingScreenState extends State<ParkingScreen> {
                 );
               }),
             ),
-            SizedBox(height: 30),
+            const SizedBox(height: 30),
             if (selectedSpot != null)
               Wrap(
                 spacing: 10,
@@ -204,13 +231,15 @@ class _ParkingScreenState extends State<ParkingScreen> {
                   return ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade600,
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                     ),
                     onPressed: () => reserveSpot(selectedSpot!, minutes),
                     child: Text(
                       "$minutes min",
-                      style: TextStyle(fontSize: 16, color: Colors.white),
+                      style: const TextStyle(fontSize: 16, color: Colors.white),
                     ),
                   );
                 }).toList(),
